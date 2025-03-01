@@ -1,6 +1,29 @@
 version: "3.8"
 
 services:
+  traefik:
+    image: traefik:v2
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--accesslog=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=majorkiema.mk@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    expose:
+      - "8080"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - traefik_letsencrypt:/letsencrypt
+
   frontend:
     build:
       context: ./frontend
@@ -15,10 +38,22 @@ services:
     depends_on:
       - auth-api
       - todos-api
-    networks:
-      - devops
     command: npm run dev
-
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      - "traefik.http.routers.frontend-http.entrypoints=web"
+      - "traefik.http.routers.frontend-http.rule=Host(`techenigma.net`)"
+      - "traefik.http.routers.frontend-http.service=frontend"
+      - "traefik.http.routers.frontend-https.tls=true"
+      - "traefik.http.routers.frontend-https.tls.certresolver=myresolver"
+      - "traefik.http.routers.frontend-https.entrypoints=websecure"
+      - "traefik.http.routers.frontend-https.rule=Host(`techenigma.net`)"
+      - "traefik.http.routers.frontend-https.service=frontend"
+      - "traefik.http.routers.frontend-http.middlewares=redirect-https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.scheme=https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.permanent=true"
+  
   auth-api:
     build:
       context: ./auth-api
@@ -30,9 +65,18 @@ services:
       - USERS_API_ADDRESS=${USERS_API_ADDRESS}
     depends_on:
       - users-api
-    networks:
-      - devops
-
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.authapi-http.entrypoints=web"
+      - "traefik.http.routers.authapi-http.rule=Host(`auth.techenigma.net`)"
+      - "traefik.http.routers.authapi-https.tls=true"
+      - "traefik.http.routers.authapi-https.tls.certresolver=myresolver"
+      - "traefik.http.routers.authapi-https.entrypoints=websecure"
+      - "traefik.http.routers.authapi-https.rule=Host(`auth.techenigma.net`)"
+      - "traefik.http.routers.authapi-http.middlewares=redirect-https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.scheme=https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.permanent=true"
+ 
   todos-api:
     build:
       context: ./todos-api
@@ -46,9 +90,19 @@ services:
       - REDIS_CHANNEL=${REDIS_CHANNEL}
     depends_on:
       - redis-queue
-    networks:
-      - devops
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.todosapi-http.entrypoints=web"
+      - "traefik.http.routers.todosapi-http.rule=Host(`todos.techenigma.net`)"
+      - "traefik.http.routers.todosapi-https.tls=true"
+      - "traefik.http.routers.todosapi-https.tls.certresolver=myresolver"
+      - "traefik.http.routers.todosapi-https.entrypoints=websecure"
+      - "traefik.http.routers.todosapi-https.rule=Host(`todos.techenigma.net`)"
+      - "traefik.http.routers.todosapi-http.middlewares=redirect-https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.scheme=https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.permanent=true"
 
+ 
   users-api:
     build:
       context: ./users-api
@@ -57,8 +111,17 @@ services:
     environment:
       - SERVER_PORT=${SERVER_PORT}
       - JWT_SECRET=${JWT_SECRET}
-    networks:
-      - devops
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.usersapi-http.entrypoints=web"
+      - "traefik.http.routers.usersapi-http.rule=Host(`users.techenigma.net`)"
+      - "traefik.http.routers.usersapi-https.tls=true"
+      - "traefik.http.routers.usersapi-https.tls.certresolver=myresolver"
+      - "traefik.http.routers.usersapi-https.entrypoints=websecure"
+      - "traefik.http.routers.usersapi-https.rule=Host(`users.techenigma.net`)"
+      - "traefik.http.routers.usersapi-http.middlewares=redirect-https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.scheme=https"
+      - "traefik.http.middlewares.redirect-https.redirectScheme.permanent=true"
 
   log-processor:
     build:
@@ -69,8 +132,6 @@ services:
       - REDIS_CHANNEL=${REDIS_CHANNEL}
     depends_on:
       - redis-queue
-    networks:
-      - devops
 
   redis-queue:
     image: redis:7
@@ -78,12 +139,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    networks:
-      - devops
 
 volumes:
+  traefik_letsencrypt:
   redis_data:
-
-networks:
-  devops:
-    driver: bridge
